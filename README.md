@@ -71,7 +71,7 @@ typescript-transformer-logger/
 
 Change the list of variables in `variablesToLog` to the list of variables whose values are to be logged.
 
-```json
+```
 {
   ...
   "variablesToLog": [
