@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2020", // Or newer
+    "module": "commonjs",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "sourceMap": true,
+    // --- ttypescript / ts-patch configuration ---
+    "plugins": [
+      {
+        "transform": "./src/transformers/auto-log-vars-transformer.ts", // Path to your transformer
+        // "import": "default", // If your transformer exports default
+        // "type": "program", // Or "checker" or "raw" depending on transformer needs. "program" gives typeChecker.
+        // You can pass options to your transformer here:
+        // "someOption": "value"
+      }
+    ]
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
