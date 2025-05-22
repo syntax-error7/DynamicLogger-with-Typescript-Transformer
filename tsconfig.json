@@ -5,6 +5,8 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "declaration": true, // This is essential for generating .d.ts files
+    "declarationMap": true, 
     "forceConsistentCasingInFileNames": true,
     "outDir": "./dist",
     "rootDir": "./src",
