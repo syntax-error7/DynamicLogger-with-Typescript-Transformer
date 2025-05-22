@@ -1,5 +1,5 @@
 {
-  "name": "typescript-transformer-logger",
+  "name": "dynamic-logger",
   "version": "1.0.0",
   "description": "Dynamic logger with TypeScript custom transformer",
   "main": "dist/dynamicLogger.js",
