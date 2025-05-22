@@ -2,25 +2,29 @@
   "name": "typescript-transformer-logger",
   "version": "1.0.0",
   "description": "Dynamic logger with TypeScript custom transformer",
-  "main": "dist/main.js",
+  "main": "dist/dynamicLogger.js",
+  "types": "dist/dynamicLogger.d.ts", 
+  "files": [ 
+    "dist/**/*",
+    "README.md"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "start": "node dist/main.js",
-    "dev": "ts-node src/main.ts",
-    "clean": "rm -rf dist",
-    "start:ts": "ts-node src/main.ts"
+    "postinstall": "npx ts-patch install -s", 
+    "build": "tsc -p tsconfig.json", 
+    "prepare": "npm run clean && npm run build", 
+    "start:example": "node dist/main.js", 
+    "dev:example": "ts-node src/main.ts", 
+    "clean": "rm -rf dist"
   },
   "dependencies": {
     "chokidar": "^3.5.3",
-    "uuid": "^9.0.0",
     "winston": "^3.8.2"
   },
   "devDependencies": {
     "@types/node": "^18.11.18",
-    "@types/uuid": "^9.0.0",
     "@types/winston": "^2.4.4",
     "ts-node": "^10.9.1",
-    "ts-patch": "^2.0.0",
-    "typescript": "^4.9.4"
+    "ts-patch": "^2.0.0", 
+    "typescript": "^4.9.4" 
   }
 }
