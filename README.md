@@ -193,7 +193,7 @@ Follow these steps to integrate `dynamic-logger` into your TypeScript applicatio
     *   Ensure `dynamic-logger`'s `package.json` has correct `main` and `types` fields pointing to its `dist` files.
     *   Ensure `dynamic-logger`'s `prepare` script ran successfully during `npm install` and created the `.d.ts` file in its `dist` folder within your `node_modules`.
     *   Verify your import statement: `import { logger } from 'dynamic-logger';` (or the correct package name).
-*   **Transformer not injecting variables / No `console.log` from transformer during build:**
+*   **Transformer not injecting variables**
     *   Verify `npx ts-patch install` ran successfully in your project (check `postinstall` script).
     *   Ensure your build script uses `tsc` (not `npx tsc`).
     *   Double-check the `"transform"` path in your `tsconfig.json`'s `plugins` section. It must be exact.
