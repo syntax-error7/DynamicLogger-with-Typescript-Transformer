@@ -42,7 +42,7 @@ function getScopedVariablesDeclaredBeforeNode(
             // 2. Handle declarations within the current block/scope
             current.forEachChild(childNode => {
                 // Only consider declarations that appear before our target logger.log() call
-                // if (childNode.getEnd() < targetPosition) {
+                if (childNode.getEnd() < targetPosition) {
                     if (ts.isVariableStatement(childNode)) {
                         childNode.declarationList.declarations.forEach(declaration => {
                             if (ts.isIdentifier(declaration.name)) {
@@ -64,7 +64,7 @@ function getScopedVariablesDeclaredBeforeNode(
                         identifiers.push(childNode.name);
                     }
                     // Add other declaration types if needed (e.g., import declarations for imported bindings)
-                // }
+                }
             });
         }
         current = current.parent;
