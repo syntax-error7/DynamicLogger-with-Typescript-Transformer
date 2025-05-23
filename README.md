@@ -1,5 +1,7 @@
 # DynamicLogger with TypeScript Transformer
 
+`dynamic-logger` automatically injects in-scope local variables into your log calls at compile time, allowing you to dynamically control which variables are logged at runtime via an external configuration file.
+
 ## Motivation
 
 Manually adding variable names into log statements requires code to be re-deployed, which is undesirable. 
@@ -10,103 +12,196 @@ Enter DynamicLogger, which accesses the logging code from a database and saves u
 
 It contains a prototype of the module we envision creating.
 
-## Our approach
+## How it Works for You
 
-Initial idea was to call eval function inside the defintion of logger.log, but that requires the values of local variables to be fed into it since the scope of the function is different from the scope from which the function is called.
+1.  You install `dynamic-logger` and set up your TypeScript project to use its custom transformer.
+2.  You write `logger.log("My event occurred");` in your code.
+3.  During compilation, the transformer changes this to (conceptually): `logger.log("My event occurred", { localA, localB, paramC });`
+4.  At runtime, `dynamic-logger` reads your project's `logger-config.json`.
+5.  It filters the injected `{ localA, localB, paramC }` based on the `variablesToLog` array in your config.
+6.  Only the desired variables are actually written to your log file.
 
-One option was to feed the variables we wish to log after fetching from the DB into the log function, but we ruled this out since we wanted to keep the code simple at the user end (as simple as `logger.log(<unique_id>)`).
+---
 
-Another option was to extract variable values from the current stack frame at runtime, which is achieved using `inspect.currentframe().f_locals` in Python. However, in JS there is no means to access the local variable stack frame or its contents at runtime.
+## Using `dynamic-logger` in Your Project
 
-So our approach is to construct the list of local variables during the transpilation of TS code to JS code.
+Follow these steps to integrate `dynamic-logger` into your TypeScript application.
 
-This is done by traversing the Abstract Syntax Tree (AST) which is constructed when the TS code is parsed. 
+### 1. Prerequisites
 
-The access to this AST is provided through typescript transformers.
+*   Node.js (LTS version recommended)
+*   npm
+*   Your project must be a TypeScript project.
 
-This is the code is doing in a nutshell:
+### 2. Configure `tsconfig.json`
 
-1. From the node corresponding to logger.log, traverse up the AST till you reach a 'scope defining node'.
-2. Make a list of the local variables of that scope which were intialized before the log call and inject that list into the log the function.
+   Modify your project's `tsconfig.json` to tell the TypeScript compiler to use the `dynamic-logger` transformer.
 
-Hence, the `logger.log("Message")` line in TS file is altered to `logger.log("Message", list_of_vars)` in the transpiled JS file.
+   ```json
+   // your-project/tsconfig.json
+   {
+     "compilerOptions": {
+       // ... your existing compiler options (target, module, outDir, rootDir, etc.)
+       "plugins": [
+         {
+           // Path to the compiled transformer from the dynamic-logger package
+           "transform": "./node_modules/dynamic-logger/dist/transformers/auto-log-vars-transformer.js",
+           "type": "program" 
+         }
+         // ... 
+       ]
+     },
+     // ...
+   }
+   ```
+   **Important:** Ensure the `"transform"` path correctly points to the `auto-log-vars-transformer.js` file within the installed `dynamic-logger` package in your `node_modules` directory. (Installation directions are provided below)
+
+### 3. Installation
+
+`dynamic-logger` is installed directly from its GitHub repository.
+
+**a. Add `dynamic-logger` as a dependency:**
+
+   In your project's `package.json`, add `dynamic-logger` to your `dependencies`:
+
+   ```json
+   // your-project/package.json
+   {
+     "name": "your-project",
+     // ...
+     "dependencies": {
+       "dynamic-logger": "github:arvindf216/DynamicLogger-with-Typescript-Transformer#main", 
+       // ... other dependencies
+     },
+   }
+   ```
+
+**b. Configure `typescript` version in `devDependencies`:**
+
+   ```json
+   // your-project/package.json
+   {
+     // ...
+     "devDependencies": {
+       // ... other dependencies
+       "ts-patch": "^2.0.0",   
+       "ts-node": "^10.9.1",
+       "typescript": "^4.9.4" // Keep this as typescript version
+     }
+     // ...
+   }
+   ```
 
 
-## Project Structure
+   Ensure to **keep the typescript version same as "^4.9.4"**, as the file `typescriptServices.js` is often not present in later versions and this file is required by ts-patch.
 
-```
-typescript-transformer-logger/
-├── package.json
-├── tsconfig.json       # Configured with the custom transformer
-├── logger-config.json  # Runtime logger configuration
-│
-├── src/
-│   ├── dynamicLogger.ts    # The logger class
-│   ├── main.ts             # Example usage
-│   └── transformers/
-│       └── auto-log-vars-transformer.ts # The AST transformer
-│
-└── dist/                 # Compiled JavaScript output
-```
 
-## Installation and running
+**c. Configure `ts-patch`:**
 
-1.  **Clone the repository (if applicable) or set up your project.**
-2.  **Install dependencies:**
-    ```bash
-    npm install
-    npx ts-patch install
-    ```
+   Add a `postinstall` script to your project's `package.json` to ensure `ts-patch` installation. Also edit the build script so that your TypeScript code is compiled using the patched `tsc`, applying the `dynamic-logger` transformer
 
-3. **Build and Run:**
+   ```json
+   // your-project/package.json
+   {
+     // ...
+     "scripts": {
+       "postinstall": "npx ts-patch install -s", // Add this line
+       "build": "... && tsc -p tsconfig.json",   // Add this script 
+       // ... other scripts
+     }
+     // ...
+   }
+   ```
+
+   Then, run:
+   ```bash
+   npm install
+   ```
+   This will download `dynamic-logger` into your `node_modules/` and run its `prepare` script, which builds the necessary `dist` files including the transformer in the `node-modules/dynamic-logger` directory. 
+   
+   The `postinstall` script will install `ts-patch` which will be required to compile your TypeScript code according to the custom transformer specified in the `tsconfig.json` file at build time.
+
+### 4. Create `logger-config.json`
+
+   In the **root directory of your project**, create a `logger-config.json` file. This file controls how `dynamic-logger` behaves at runtime.
+
+   ```json
+   // your-project/logger-config.json
+   {
+     "logFile": "app.log",       // Log file name for your application
+     "logLevel": "info",         // e.g., "debug", "info", "warn", "error"
+     "enabled": true,            // Master switch for logging
+     "variablesToLog": [
+       // List the names of local variables FROM YOUR CODE that you want to see
+       "userId",
+       "orderId",
+       "productName",
+       "isActive",
+       "loopCounter"
+       // ... any other variables
+     ],
+     "checkIntervalSeconds": 10,  // How often to check this file for changes
+     "logCallSite": true          // Log [file:line (function)]?
+   }
+   ```
+   Customize `logFile`, `logLevel`, and especially `variablesToLog` according to your application's needs.
+
+### 5. Use the Logger in Your Code
+
+   Import and use the logger in your TypeScript files:
+
+   ```typescript
+   // src/services/my-service.ts (in your project)
+   import { logger } from 'dynamic-logger'; 
+
+   // Any function in your project
+   export function processData(userId: string, data: any): void {
+     const items = data.items || [];
+     const itemCount = items.length;
+     let status = "processing";
+
+     // You write this simple log call:
+     logger.log("Starting data processing for user.");
+     // At compile time, it becomes:
+     // logger.log("Starting data processing for user.", { userId, data, items, itemCount, status, ... });
+     // At runtime, if "userId" and "status" are in your logger-config.json's variablesToLog, they will be included in the log output.
+
+     // ... remaining code ...
+   }
+   ```
+
+### 6. Build and Run Your Project
+
+*   **Build:**
     ```bash
     npm run build
+    ```
+    This will compile your TypeScript code using the patched `tsc`, applying the `dynamic-logger` transformer. Check your `dist` output to see the transformed `logger.log` calls.
+
+*   **Run:**
+    ```bash
     npm run start
     ```
 
-## Configuration
+   Observe the log file (e.g., `app.log`) and try changing `logger-config.json` while your application is running to see logging behavior change dynamically!
 
+---
 
-### `logger-config.json`
+## Troubleshooting
 
-Change the list of variables in `variablesToLog` to the list of variables whose values are to be logged.
+*   **"Could not find a declaration file for module 'dynamic-logger'..."**:
+    *   Ensure `dynamic-logger`'s `package.json` has correct `main` and `types` fields pointing to its `dist` files.
+    *   Ensure `dynamic-logger`'s `prepare` script ran successfully during `npm install` and created the `.d.ts` file in its `dist` folder within your `node_modules`.
+    *   Verify your import statement: `import { logger } from 'dynamic-logger';` (or the correct package name).
+*   **Transformer not injecting variables / No `console.log` from transformer during build:**
+    *   Verify `npx ts-patch install` ran successfully in your project (check `postinstall` script).
+    *   Ensure your build script uses `tsc` (not `npx tsc`).
+    *   Double-check the `"transform"` path in your `tsconfig.json`'s `plugins` section. It must be exact.
+*   **Variables logged are not what you expect:**
+    *   Check the `variablesToLog` array in your project's `logger-config.json`. Only names listed here (CASE SENSITIVE) will be output.
+    *   The transformer only injects variables declared *before* the `logger.log()` call in the same or an enclosing scope.
 
-```
-{
-  ...
-  "variablesToLog": [
-    "userId",
-    "itemId",
-    "status",
-    "requestData"
-  ],
-  ...
-}
-```
-
-## Example usage
-
-```typescript
-// src/someModule.ts
-import { logger } from './dynamicLogger'; // Adjust path as needed
-
-function processUser(userId: string, data: any) {
-    const itemCount = data.items?.length || 0;
-    let status = "pending";
-
-    // You write this:
-    logger.log("Starting user processing");
-    // Transformer changes it to (conceptually):
-    // logger.log("Starting user processing", { userId, data, itemCount, status });
-
-    if (itemCount > 10) {
-        status = "flagged";
-        const reason = "Too many items";
-        logger.log("User flagged"); // Will include { userId, data, itemCount, status, reason }
-    }
-    // ...
-}
-```
+---
 
 ## Further work
 
