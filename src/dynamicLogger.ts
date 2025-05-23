@@ -220,4 +220,4 @@ class DynamicLogger {
 }
 
 // Export a singleton instance
-export const logger = DynamicLogger.getInstance();
+export const dLogger = DynamicLogger.getInstance();
