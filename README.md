@@ -37,8 +37,8 @@ Follow these steps to integrate `dynamic-logger` into your TypeScript applicatio
 
    Modify your project's `tsconfig.json` to tell the TypeScript compiler to use the `dynamic-logger` transformer.
 
-   ```
-   // your-project/tsconfig.json
+   ```json
+   /* your-project/tsconfig.json */
    {
      "compilerOptions": {
        // ... your existing compiler options (target, module, outDir, rootDir, etc.)
