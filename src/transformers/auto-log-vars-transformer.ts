@@ -42,7 +42,7 @@ function getScopedVariablesDeclaredBeforeNode(
             // 2. Handle declarations within the current block/scope
             current.forEachChild(childNode => {
                 // Only consider declarations that appear before our target logger.log() call
-                if (childNode.getEnd() < targetPosition) {
+                // if (childNode.getEnd() < targetPosition) {
                     if (ts.isVariableStatement(childNode)) {
                         childNode.declarationList.declarations.forEach(declaration => {
                             if (ts.isIdentifier(declaration.name)) {
@@ -56,17 +56,15 @@ function getScopedVariablesDeclaredBeforeNode(
                                 });
                             }
                         });
-                    } else if (ts.isFunctionDeclaration(childNode) && childNode.name) {
-                        // Function declarations are hoisted, but for consistency,
-                        // we can still check position or just include them.
-                        // Let's be strict for now and check position.
-                        identifiers.push(childNode.name);
+                    // } else if (ts.isFunctionDeclaration(childNode) && childNode.name) {
+                    //     // Function declarations are hoisted, but for consistency lets check position
+                    //     identifiers.push(childNode.name);
                     } else if (ts.isClassDeclaration(childNode) && childNode.name) {
                         // Class declarations are not hoisted like var.
                         identifiers.push(childNode.name);
                     }
                     // Add other declaration types if needed (e.g., import declarations for imported bindings)
-                }
+                // }
             });
         }
         current = current.parent;
@@ -82,6 +80,10 @@ function getScopedVariablesDeclaredBeforeNode(
         seen.add(id.text);
         return true;
     });
+
+    console.log(`[TRANSFORMER DEBUG] For target node at ${targetPosition}:`);
+    identifiers.forEach(id => console.log(`  - Found raw identifier: ${id.text} (pos: ${id.getStart()}-${id.getEnd()})`));
+    uniqueIdentifiers.forEach(id => console.log(`  - Unique identifier: ${id.text}`));
 
     return uniqueIdentifiers;
 }
@@ -102,7 +104,7 @@ export default function (program: ts.Program, pluginOptions: any): ts.Transforme
                     const symbol = typeChecker.getSymbolAtLocation(expression.expression);
                     // Ideally, you'd check if `symbol` truly resolves to your logger instance.
                     // For simplicity, if the object is named 'logger':
-                    if (ts.isIdentifier(expression.expression) && expression.expression.getText() === 'logger') {
+                    if (ts.isIdentifier(expression.expression) && expression.expression.getText() === 'dLogger') {
                         isLoggerCall = true;
                     }
                 }
@@ -115,20 +117,22 @@ export default function (program: ts.Program, pluginOptions: any): ts.Transforme
 
                         const newArguments: ts.Expression[] = [node.arguments[0]]; // Start with the message
 
+                        console.log(`[TRANSFORMER DEBUG] Logger call: ${node.getText()}`);
+                        console.log(`  - Message: ${node.arguments[0].getText()}`);
+                        console.log(`  - scopedVars (${scopedVars.length}):`, scopedVars.map(sv => sv.text));
+
                         if (scopedVars.length > 0) {
                             const objectLiteralProperties = scopedVars.map(idNode =>
                                 factory.createShorthandPropertyAssignment(idNode) // Use the identifier node directly for shorthand
                             );
                             const localsObject = factory.createObjectLiteralExpression(objectLiteralProperties, true);
                             newArguments.push(localsObject);
+                            console.log(`  - Injecting localsObject with keys: ${objectLiteralProperties.map(p => (p.name as ts.Identifier).text).join(', ')}`);
+                        }
+                        else{
+                            console.log("  - No scoped vars to inject.");
                         }
 
-                        // If there were other original arguments beyond the message (and potentially an existing locals object),
-                        // preserve them. This simple version assumes only message, or message + locals.
-                        // A more robust version would intelligently merge or replace.
-                        // For now, if the original call was just logger.log("message"), we add locals.
-                        // If it was logger.log("message", existingLocals), this version might replace existingLocals if node.arguments.length === 1.
-                        // Let's refine to only add if it was just the message.
                         if (node.arguments.length === 1 && scopedVars.length > 0) {
                              return factory.updateCallExpression(
                                 node,
@@ -142,7 +146,6 @@ export default function (program: ts.Program, pluginOptions: any): ts.Transforme
                         }
                         // If node.arguments.length > 1, it means the user already passed a second argument.
                         // The current logic doesn't merge or overwrite. You might want to define that behavior.
-                        // For now, we'll leave calls with >1 argument untouched by this specific injection.
                     }
                 }
             }
