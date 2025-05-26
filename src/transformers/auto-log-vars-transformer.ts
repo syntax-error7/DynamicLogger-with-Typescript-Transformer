@@ -1,15 +1,21 @@
 // auto-log-vars-transformer.ts
 import * as ts from 'typescript';
 
+// Define an interface for your plugin options for type safety
+interface TransformerOptions {
+    verbose?: boolean; // Make it optional
+    loggerObjectName?: string; // Make this optional too 
+}
+
 // Helper to get all identifiers in the current scope that are DECLARED BEFORE the targetNode
 function getScopedVariablesDeclaredBeforeNode(
     targetNode: ts.Node,
     typeChecker: ts.TypeChecker,
-    factory: ts.NodeFactory
+    factory: ts.NodeFactory,
+    options: TransformerOptions
 ): ts.Identifier[] {
     const identifiers: ts.Identifier[] = [];
     const targetPosition = targetNode.getStart(); // Position of the logger.log() call
-
     let current: ts.Node | undefined = targetNode;
 
     // Walk up the AST to find enclosing scopes
@@ -81,9 +87,11 @@ function getScopedVariablesDeclaredBeforeNode(
         return true;
     });
 
-    console.log(`[TRANSFORMER DEBUG] For target node at ${targetPosition}:`);
-    identifiers.forEach(id => console.log(`  - Found raw identifier: ${id.text} (pos: ${id.getStart()}-${id.getEnd()})`));
-    uniqueIdentifiers.forEach(id => console.log(`  - Unique identifier: ${id.text}`));
+    if (options.verbose) {
+        console.log(`[TRANSFORMER DEBUG] For target node at ${targetPosition}:`);
+        identifiers.forEach(id => console.log(`  - Found raw identifier: ${id.text} (pos: ${id.getStart()}-${id.getEnd()})`));
+        uniqueIdentifiers.forEach(id => console.log(`  - Unique identifier: ${id.text}`));
+    }
 
     return uniqueIdentifiers;
 }
@@ -91,6 +99,13 @@ function getScopedVariablesDeclaredBeforeNode(
 
 export default function (program: ts.Program, pluginOptions: any): ts.TransformerFactory<ts.SourceFile> {
     const typeChecker = program.getTypeChecker();
+
+    // Default options if none are provided or if verbose is undefined
+    const options: TransformerOptions = {
+        verbose: false, // Default to not verbose
+        loggerObjectName: 'dLogger', // Default logger object name
+        ...pluginOptions // Spread provided options, overriding defaults
+    };
 
     return (context: ts.TransformationContext) => {
         const factory = context.factory;
@@ -101,25 +116,23 @@ export default function (program: ts.Program, pluginOptions: any): ts.Transforme
                 let isLoggerCall = false;
 
                 if (ts.isPropertyAccessExpression(expression) && expression.name.getText() === 'log') {
-                    const symbol = typeChecker.getSymbolAtLocation(expression.expression);
-                    // Ideally, you'd check if `symbol` truly resolves to your logger instance.
-                    // For simplicity, if the object is named 'logger':
-                    if (ts.isIdentifier(expression.expression) && expression.expression.getText() === 'dLogger') {
+                    if (ts.isIdentifier(expression.expression) && expression.expression.getText() === options.loggerObjectName) {
                         isLoggerCall = true;
                     }
                 }
-                // Add more robust checks for `isLoggerCall` if needed (e.g., imported logger)
 
                 if (isLoggerCall) {
                     if (node.arguments.length >= 1) { // Expect at least the message argument
                         // Get variables declared *before* this specific logger.log() call
-                        const scopedVars = getScopedVariablesDeclaredBeforeNode(node, typeChecker, factory);
+                        const scopedVars = getScopedVariablesDeclaredBeforeNode(node, typeChecker, factory, options);
 
                         const newArguments: ts.Expression[] = [node.arguments[0]]; // Start with the message
 
-                        console.log(`[TRANSFORMER DEBUG] Logger call: ${node.getText()}`);
-                        console.log(`  - Message: ${node.arguments[0].getText()}`);
-                        console.log(`  - scopedVars (${scopedVars.length}):`, scopedVars.map(sv => sv.text));
+                        if (options.verbose){
+                            console.log(`[TRANSFORMER DEBUG] Logger call: ${node.getText()}`);
+                            console.log(`  - Message: ${node.arguments[0].getText()}`);
+                            console.log(`  - scopedVars (${scopedVars.length}):`, scopedVars.map(sv => sv.text));
+                        }
 
                         if (scopedVars.length > 0) {
                             const objectLiteralProperties = scopedVars.map(idNode =>
@@ -127,10 +140,14 @@ export default function (program: ts.Program, pluginOptions: any): ts.Transforme
                             );
                             const localsObject = factory.createObjectLiteralExpression(objectLiteralProperties, true);
                             newArguments.push(localsObject);
-                            console.log(`  - Injecting localsObject with keys: ${objectLiteralProperties.map(p => (p.name as ts.Identifier).text).join(', ')}`);
+                            if (options.verbose){
+                                console.log(`  - Injecting localsObject with keys: ${objectLiteralProperties.map(p => (p.name as ts.Identifier).text).join(', ')}`);
+                            }
                         }
                         else{
-                            console.log("  - No scoped vars to inject.");
+                            if (options.verbose){
+                                console.log("  - No scoped vars to inject.");
+                            }
                         }
 
                         if (node.arguments.length === 1 && scopedVars.length > 0) {
