@@ -41,7 +41,7 @@ Follow these steps to integrate `dynamic-logger` into your TypeScript applicatio
 
    Modify your project's `tsconfig.json` to tell the TypeScript compiler to use the `dynamic-logger` transformer.
 
-   ```
+   ```bash
    // your-project/tsconfig.json
    {
      "compilerOptions": {
@@ -68,7 +68,7 @@ Follow these steps to integrate `dynamic-logger` into your TypeScript applicatio
 
    In your project's `package.json`, add `dynamic-logger` to your `dependencies`:
 
-   ```
+   ```bash
    // your-project/package.json
    {
      "name": "your-project",
@@ -82,7 +82,7 @@ Follow these steps to integrate `dynamic-logger` into your TypeScript applicatio
 
 **b. Configure `typescript` version in `devDependencies`:**
 
-   ```
+   ```bash
    // your-project/package.json
    {
      // ...
@@ -127,7 +127,7 @@ Follow these steps to integrate `dynamic-logger` into your TypeScript applicatio
 
    In the **root directory of your project**, create a `logger-config.json` file. This file controls how `dynamic-logger` behaves at runtime.
 
-   ```
+   ```bash
    // your-project/logger-config.json
    {
      "logFile": "app.log",       // Log file name for your application
