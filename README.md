@@ -67,7 +67,7 @@ Follow these steps to integrate `dynamic-logger` into your TypeScript applicatio
 
 `dynamic-logger` is installed directly from its GitHub repository.
 
-**a. Add `dynamic-logger` as a dependency:**
+**a. Add `dynamic-logger` to dependencies:**
 
    In your project's `package.json`, add `dynamic-logger` to your `dependencies`:
 
@@ -83,7 +83,7 @@ Follow these steps to integrate `dynamic-logger` into your TypeScript applicatio
    }
    ```
 
-**b. Configure `typescript` version in `devDependencies`:**
+**b. Add `ts-patch` to `devDependencies`:**
 
    ```bash
    // your-project/package.json
@@ -91,19 +91,18 @@ Follow these steps to integrate `dynamic-logger` into your TypeScript applicatio
      // ...
      "devDependencies": {
        // ... other dependencies
-       "ts-patch": "^2.0.0",   
-       "ts-node": "^10.9.1",
-       "typescript": "^4.9.4" // Keep this as typescript version
+       "ts-patch": "^3.0.0", 
+       "typescript": "your-ts-version",
+       // other dependencies ...
      }
      // ...
    }
    ```
 
+   Ensure that the version is set to **"3.0.0"**, as versions **2.x.x** are not configured to work with **TypeScript 5+**. `ts-patch` is required to compile your TypeScript code using the custom transformer specified in the `tsconfig.json` file at build time.
 
-   Ensure to **keep the typescript version same as "^4.9.4"**, as the file `typescriptServices.js` is often not present in later versions and this file is required by `ts-patch`. `ts-patch` is required to compile your TypeScript code according to the custom transformer specified in the `tsconfig.json` file at build time.
 
-
-**c. Configure `ts-patch`:**
+**c. Configure `ts-patch` in `scripts`:**
 
    Add a `postinstall` script to your project's `package.json` to ensure `ts-patch` installation. Also edit the build script so that your TypeScript code is compiled using the patched `tsc`, applying the `dynamic-logger` transformer
 
@@ -124,6 +123,7 @@ Follow these steps to integrate `dynamic-logger` into your TypeScript applicatio
    ```bash
    npm install
    ```
+
    This will download `dynamic-logger` into your `node_modules/` and run its `prepare` script, which builds the necessary `dist` files including the transformer in the `node-modules/dynamic-logger` directory. The `postinstall` script will install the `ts-patch` tool, whose usability was mentioned earlier. 
 
 ### 4. Create `logger-config.json`
