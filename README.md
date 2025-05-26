@@ -50,7 +50,10 @@ Follow these steps to integrate `dynamic-logger` into your TypeScript applicatio
          {
            // Path to the compiled transformer from the dynamic-logger package
            "transform": "./node_modules/dynamic-logger/dist/transformers/auto-log-vars-transformer.js",
-           "type": "program" 
+           "type": "program",
+           // You can add other options too:
+           // "verbose": true, // To control debug statments at build time
+           // "loggerObjectName": "myLogger", // If you imported dLogger as myLogger
          }
          // ... 
        ]
