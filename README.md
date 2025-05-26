@@ -97,14 +97,14 @@ Follow these steps to integrate `dynamic-logger` into your TypeScript applicatio
    ```
 
 
-   Ensure to **keep the typescript version same as "^4.9.4"**, as the file `typescriptServices.js` is often not present in later versions and this file is required by ts-patch.
+   Ensure to **keep the typescript version same as "^4.9.4"**, as the file `typescriptServices.js` is often not present in later versions and this file is required by `ts-patch`. `ts-patch` is required to compile your TypeScript code according to the custom transformer specified in the `tsconfig.json` file at build time.
 
 
 **c. Configure `ts-patch`:**
 
    Add a `postinstall` script to your project's `package.json` to ensure `ts-patch` installation. Also edit the build script so that your TypeScript code is compiled using the patched `tsc`, applying the `dynamic-logger` transformer
 
-   ```
+   ```bash
    // your-project/package.json
    {
      // ...
@@ -121,9 +121,7 @@ Follow these steps to integrate `dynamic-logger` into your TypeScript applicatio
    ```bash
    npm install
    ```
-   This will download `dynamic-logger` into your `node_modules/` and run its `prepare` script, which builds the necessary `dist` files including the transformer in the `node-modules/dynamic-logger` directory. 
-   
-   The `postinstall` script will install `ts-patch` which will be required to compile your TypeScript code according to the custom transformer specified in the `tsconfig.json` file at build time.
+   This will download `dynamic-logger` into your `node_modules/` and run its `prepare` script, which builds the necessary `dist` files including the transformer in the `node-modules/dynamic-logger` directory. The `postinstall` script will install the `ts-patch` tool, whose usability was mentioned earlier. 
 
 ### 4. Create `logger-config.json`
 
