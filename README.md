@@ -2,6 +2,10 @@
 
 `dynamic-logger` automatically injects in-scope local variables into your log calls at compile time, allowing you to dynamically control which variables are logged at runtime via an external configuration file.
 
+## WARNING
+
+This module won't work if you are using a typescript bundler (such as vite, webpack, tsup, esbuild, etc.). The local variables injected by the custom typescript transformer are being removed by the bundler as a part of code simplification or tree shaking.
+
 ## Motivation
 
 Manually adding variable names into log statements requires code to be re-deployed, which is undesirable. 
@@ -152,7 +156,7 @@ Follow these steps to integrate `dynamic-logger` into your TypeScript applicatio
 
    ```typescript
    // src/services/my-service.ts (in your project)
-   import { logger } from 'dynamic-logger'; 
+   import { dLogger } from 'dynamic-logger'; 
 
    // Any function in your project
    export function processData(userId: string, data: any): void {
@@ -161,9 +165,9 @@ Follow these steps to integrate `dynamic-logger` into your TypeScript applicatio
      let status = "processing";
 
      // You write this simple log call:
-     logger.log("Starting data processing for user.");
+     dLogger.log("Starting data processing for user.");
      // At compile time, it becomes:
-     // logger.log("Starting data processing for user.", { userId, data, items, itemCount, status, ... });
+     // dLogger.log("Starting data processing for user.", { userId, data, items, itemCount, status, ... });
      // At runtime, if "userId" and "status" are in your logger-config.json's variablesToLog, they will be included in the log output.
 
      // ... remaining code ...
