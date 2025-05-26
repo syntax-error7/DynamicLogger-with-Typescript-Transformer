@@ -24,7 +24,7 @@
     "@types/node": "^18.11.18",
     "@types/winston": "^2.4.4",
     "ts-node": "^10.9.1",
-    "ts-patch": "^2.0.0", 
-    "typescript": "^4.9.4" 
+    "ts-patch": "^3.0.0", 
+    "typescript": "^5.0.0" 
   }
 }
