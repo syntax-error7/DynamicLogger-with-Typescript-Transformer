@@ -4,7 +4,7 @@
 
 ## WARNING
 
-This module won't work if you are using a typescript bundler (such as vite, webpack, tsup, esbuild, etc.). The local variables injected by the custom typescript transformer are being removed by the bundler as a part of code simplification or tree shaking.
+This module won't work if you are using a typescript bundler (such as vite, webpack, tsup, esbuild, etc.). The local variables injected by the custom typescript transformer are being removed by the bundler as a part of code cleanup or tree shaking.
 
 ## Motivation
 
