@@ -18,13 +18,13 @@
   },
   "dependencies": {
     "chokidar": "^3.5.3",
+    "ts-patch": "^3.0.0", 
     "winston": "^3.8.2"
   },
   "devDependencies": {
     "@types/node": "^18.11.18",
     "@types/winston": "^2.4.4",
     "ts-node": "^10.9.1",
-    "ts-patch": "^3.0.0", 
     "typescript": "^5.0.0" 
   }
 }
