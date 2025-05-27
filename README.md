@@ -77,32 +77,14 @@ Follow these steps to integrate `dynamic-logger` into your TypeScript applicatio
      "name": "your-project",
      // ...
      "dependencies": {
-       "dynamic-logger": "github:arvindf216/DynamicLogger-with-Typescript-Transformer#main", 
+       "dynamic-logger": "github:syntax-error7/DynamicLogger-with-Typescript-Transformer#main", 
        // ... other dependencies
      },
    }
    ```
 
-**b. Add `ts-patch` to `devDependencies`:**
 
-   ```bash
-   // your-project/package.json
-   {
-     // ...
-     "devDependencies": {
-       // ... other dependencies
-       "ts-patch": "^3.0.0", 
-       "typescript": "your-ts-version",
-       // other dependencies ...
-     }
-     // ...
-   }
-   ```
-
-   Ensure that the version is set to **"3.0.0"**, as versions **2.x.x** are not configured to work with **TypeScript 5+**. `ts-patch` is required to compile your TypeScript code using the custom transformer specified in the `tsconfig.json` file at build time.
-
-
-**c. Configure `ts-patch` in `scripts`:**
+**b. Configure `ts-patch` in `scripts`:**
 
    Add a `postinstall` script to your project's `package.json` to ensure `ts-patch` installation. Also edit the build script so that your TypeScript code is compiled using the patched `tsc`, applying the `dynamic-logger` transformer
 
