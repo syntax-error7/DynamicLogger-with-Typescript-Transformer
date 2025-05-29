@@ -195,8 +195,8 @@ export const dLogger = DynamicLogger.DLInitializer(
 
 Remember:
 
-The second argument to dLogger.dynamicLog is your main message context (metadata).
-The third argument (local variables) is **automatically injected by the transformer**. You do not type it out.
+- The second argument to dLogger.dynamicLog is your main message context (metadata).
+- The third argument (local variables) is **automatically injected by the transformer**. You do not type it out.
 
 ### 6. Build and Run Your Project
 
