@@ -12,19 +12,20 @@
     "postinstall": "npx ts-patch install -s", 
     "build": "tsc -p tsconfig.json", 
     "prepare": "npm run clean && npm run build", 
-    "start:example": "node dist/main.js", 
-    "dev:example": "ts-node src/main.ts", 
+    "start:copy-public": "mkdir -p dist/public && cp src/public/index.html dist/public/index.html",
+    "start:example": "npm run start:copy-public && node dist/server.js", 
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "chokidar": "^3.5.3",
-    "ts-patch": "^3.0.0", 
-    "winston": "^3.8.2"
+    "express": "^4.19.2",
+    "ws": "^8.17.0"
   },
   "devDependencies": {
-    "@types/node": "^18.11.18",
-    "@types/winston": "^2.4.4",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.12.12",
+    "@types/ws": "^8.5.10",
     "ts-node": "^10.9.1",
+    "ts-patch": "^3.0.0", 
     "typescript": "^5.0.0" 
   }
 }

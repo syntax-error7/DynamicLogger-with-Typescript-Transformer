@@ -15,7 +15,9 @@
     "plugins": [
       {
         "transform": "./src/transformers/auto-log-vars-transformer.ts", 
-        "type": "program"
+        "type": "program",
+        // You can add other options too:
+        "verbose": true, // To control debug statments at build time
       }
     ]
   },

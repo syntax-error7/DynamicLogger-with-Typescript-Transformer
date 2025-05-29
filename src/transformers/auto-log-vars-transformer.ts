@@ -3,8 +3,8 @@ import * as ts from 'typescript';
 
 // Define an interface for your plugin options for type safety
 interface TransformerOptions {
-    verbose?: boolean; // Make it optional
-    loggerObjectName?: string; // Make this optional too 
+    verbose?: boolean;
+    loggerMethodName?: string; // Optional: Allows user to specify the log method name
 }
 
 // Helper to get all identifiers in the current scope that are DECLARED BEFORE the targetNode
@@ -15,7 +15,7 @@ function getScopedVariablesDeclaredBeforeNode(
     options: TransformerOptions
 ): ts.Identifier[] {
     const identifiers: ts.Identifier[] = [];
-    const targetPosition = targetNode.getStart(); // Position of the logger.log() call
+    const targetPosition = targetNode.getStart();
     let current: ts.Node | undefined = targetNode;
 
     // Walk up the AST to find enclosing scopes
@@ -23,19 +23,17 @@ function getScopedVariablesDeclaredBeforeNode(
         if (
             ts.isBlock(current) ||
             ts.isSourceFile(current) ||
-            ts.isFunctionLike(current) || // Catches function parameters and body
+            ts.isFunctionLike(current) ||
             ts.isModuleBlock(current) ||
-            ts.isCaseClause(current) || // For variables in switch cases
+            ts.isCaseClause(current) ||
             ts.isDefaultClause(current)
         ) {
             // 1. Handle parameters for function-like declarations
             if (ts.isFunctionLike(current) && current.parameters) {
                 current.parameters.forEach(param => {
                     if (ts.isIdentifier(param.name)) {
-                        // Parameters are always considered "declared before" any statement in the function body
                         identifiers.push(param.name);
                     } else if (ts.isObjectBindingPattern(param.name) || ts.isArrayBindingPattern(param.name)) {
-                        // Handle destructuring in parameters
                         param.name.elements.forEach(element => {
                             if (ts.isBindingElement(element) && ts.isIdentifier(element.name)) {
                                 identifiers.push(element.name);
@@ -47,14 +45,12 @@ function getScopedVariablesDeclaredBeforeNode(
 
             // 2. Handle declarations within the current block/scope
             current.forEachChild(childNode => {
-                // Only consider declarations that appear before our target logger.log() call
                 if (childNode.getEnd() < targetPosition) {
                     if (ts.isVariableStatement(childNode)) {
                         childNode.declarationList.declarations.forEach(declaration => {
                             if (ts.isIdentifier(declaration.name)) {
                                 identifiers.push(declaration.name);
                             } else if (ts.isObjectBindingPattern(declaration.name) || ts.isArrayBindingPattern(declaration.name)) {
-                                // Handle destructuring in variable declarations
                                 declaration.name.elements.forEach(element => {
                                     if (ts.isBindingElement(element) && ts.isIdentifier(element.name)) {
                                         identifiers.push(element.name);
@@ -62,22 +58,16 @@ function getScopedVariablesDeclaredBeforeNode(
                                 });
                             }
                         });
-                    // } else if (ts.isFunctionDeclaration(childNode) && childNode.name) {
-                    //     // Function declarations are hoisted, but for consistency lets check position
-                    //     identifiers.push(childNode.name);
                     } else if (ts.isClassDeclaration(childNode) && childNode.name) {
-                        // Class declarations are not hoisted like var.
                         identifiers.push(childNode.name);
                     }
-                    // Add other declaration types if needed (e.g., import declarations for imported bindings)
+                    // Could also handle ts.isFunctionDeclaration(childNode) here if desired
                 }
             });
         }
         current = current.parent;
     }
 
-    // Filter out duplicates by text, preferring the one found in the "closest" scope (though this simple walk might not guarantee that perfectly without more complex scope tracking)
-    // A more robust approach for duplicates/shadowing would involve checking symbols.
     const seen = new Set<string>();
     const uniqueIdentifiers = identifiers.filter(id => {
         if (seen.has(id.text)) {
@@ -88,7 +78,7 @@ function getScopedVariablesDeclaredBeforeNode(
     });
 
     if (options.verbose) {
-        console.log(`[TRANSFORMER DEBUG] For target node at ${targetPosition}:`);
+        console.log(`[TRANSFORMER DEBUG - getScopedVariables] For target node at ${targetPosition}:`);
         identifiers.forEach(id => console.log(`  - Found raw identifier: ${id.text} (pos: ${id.getStart()}-${id.getEnd()})`));
         uniqueIdentifiers.forEach(id => console.log(`  - Unique identifier: ${id.text}`));
     }
@@ -100,12 +90,15 @@ function getScopedVariablesDeclaredBeforeNode(
 export default function (program: ts.Program, pluginOptions: any): ts.TransformerFactory<ts.SourceFile> {
     const typeChecker = program.getTypeChecker();
 
-    // Default options if none are provided or if verbose is undefined
     const options: TransformerOptions = {
-        verbose: false, // Default to not verbose
-        loggerObjectName: 'dLogger', // Default logger object name
-        ...pluginOptions // Spread provided options, overriding defaults
+        verbose: false,
+        loggerMethodName: 'dynamicLog', // Default to 'dynamicLog' as per your example
+        ...pluginOptions
     };
+
+    if (options.verbose) {
+        console.log('[TRANSFORMER LOADED!] Effective Options:', options);
+    }
 
     return (context: ts.TransformationContext) => {
         const factory = context.factory;
@@ -113,57 +106,69 @@ export default function (program: ts.Program, pluginOptions: any): ts.Transforme
         const visitor = (node: ts.Node): ts.Node => {
             if (ts.isCallExpression(node)) {
                 const expression = node.expression;
-                let isLoggerCall = false;
+                let isTargetLoggerCall = false;
 
-                if (ts.isPropertyAccessExpression(expression) && expression.name.getText() === 'log') {
-                    if (ts.isIdentifier(expression.expression) && expression.expression.getText() === options.loggerObjectName) {
-                        isLoggerCall = true;
-                    }
+                if (ts.isPropertyAccessExpression(expression) && expression.name.getText() === options.loggerMethodName) {
+                    isTargetLoggerCall = true;
                 }
 
-                if (isLoggerCall) {
-                    if (node.arguments.length >= 1) { // Expect at least the message argument
-                        // Get variables declared *before* this specific logger.log() call
-                        const scopedVars = getScopedVariablesDeclaredBeforeNode(node, typeChecker, factory, options);
+                if (isTargetLoggerCall) {
+                    const originalArguments = node.arguments;
+                    const uniqueKeyArg = originalArguments[0]; // First argument is always uniqueKey
+                    const metadataArg = originalArguments[1];   // Second argument is metadata (optional in source)
 
-                        const newArguments: ts.Expression[] = [node.arguments[0]]; // Start with the message
-
-                        if (options.verbose){
-                            console.log(`[TRANSFORMER DEBUG] Logger call: ${node.getText()}`);
-                            console.log(`  - Message: ${node.arguments[0].getText()}`);
-                            console.log(`  - scopedVars (${scopedVars.length}):`, scopedVars.map(sv => sv.text));
-                        }
-
-                        if (scopedVars.length > 0) {
-                            const objectLiteralProperties = scopedVars.map(idNode =>
-                                factory.createShorthandPropertyAssignment(idNode) // Use the identifier node directly for shorthand
-                            );
-                            const localsObject = factory.createObjectLiteralExpression(objectLiteralProperties, true);
-                            newArguments.push(localsObject);
-                            if (options.verbose){
-                                console.log(`  - Injecting localsObject with keys: ${objectLiteralProperties.map(p => (p.name as ts.Identifier).text).join(', ')}`);
-                            }
-                        }
-                        else{
-                            if (options.verbose){
-                                console.log("  - No scoped vars to inject.");
-                            }
-                        }
-
-                        if (node.arguments.length === 1 && scopedVars.length > 0) {
-                             return factory.updateCallExpression(
-                                node,
-                                node.expression,
-                                node.typeArguments,
-                                newArguments // [message, newLocalsObject]
-                            );
-                        } else if (node.arguments.length === 1 && scopedVars.length === 0) {
-                            // No variables to add, no change needed beyond what ts.visitEachChild does
-                            return node;
-                        }
-                        // If node.arguments.length > 1, it means the user already passed a second argument.
-                        // The current logic doesn't merge or overwrite. You might want to define that behavior.
+                    if (!uniqueKeyArg) { // uniqueKey is mandatory, should not happen in valid TS
+                        if (options.verbose) console.warn(`[TRANSFORMER] Skipping dynamicLog call without uniqueKey: ${node.getText()}`);
+                        return node;
                     }
+
+                    const scopedVars = getScopedVariablesDeclaredBeforeNode(node, typeChecker, factory, options);
+
+                    if (options.verbose) {
+                        console.log(`[TRANSFORMER DEBUG] Processing dynamicLog call: ${node.getText()}`);
+                        console.log(`  - Unique Key Arg: ${uniqueKeyArg.getText()}`);
+                        console.log(`  - Metadata Arg (present?): ${!!metadataArg}`);
+                        console.log(`  - Scoped Vars (${scopedVars.length}):`, scopedVars.map(sv => sv.text));
+                    }
+
+                    // Construct the new arguments list
+                    const newArguments: ts.Expression[] = [];
+                    newArguments.push(uniqueKeyArg); // Always include uniqueKey as first arg
+
+                    // Add metadata argument. If user didn't provide, inject 'undefined'
+                    if (metadataArg) {
+                        newArguments.push(metadataArg);
+                    } else {
+                        // User called dLogger.dynamicLog('KEY') (only one argument)
+                        // We need to inject 'undefined' for the metadata parameter explicitly
+                        // so that our allAvailableLocals goes into the 3rd slot.
+                        newArguments.push(factory.createIdentifier('undefined'));
+                        if (options.verbose) console.log("  - Injected 'undefined' for optional metadata argument.");
+                    }
+
+                    // Add the allAvailableLocals object as the third argument
+                    if (scopedVars.length > 0) {
+                        const objectLiteralProperties = scopedVars.map(idNode =>
+                            factory.createShorthandPropertyAssignment(idNode)
+                        );
+                        const localsObject = factory.createObjectLiteralExpression(objectLiteralProperties, true);
+                        newArguments.push(localsObject);
+                        if (options.verbose) {
+                            console.log(`  - Injecting localsObject with keys: ${objectLiteralProperties.map(p => (p.name as ts.Identifier).text).join(', ')}`);
+                        }
+                    } else {
+                        // If no scoped vars, inject 'undefined' for the third argument
+                        newArguments.push(factory.createIdentifier('undefined'));
+                        if (options.verbose) console.log("  - No scoped vars, injected 'undefined' for locals object.");
+                    }
+
+                    // Update the CallExpression with the new arguments
+                    return factory.updateCallExpression(
+                        node,
+                        node.expression,
+                        node.typeArguments,
+                        newArguments
+                    );
                 }
             }
             return ts.visitEachChild(node, visitor, context);

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Node.js API & WebSocket Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f7f6;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background-color: #fff;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+            margin-bottom: 25px;
+            width: 100%;
+            max-width: 600px;
+            box-sizing: border-box;
+        }
+        h1, h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin-top: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.1s ease;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:active {
+            transform: scale(0.98);
+        }
+        pre, #timeDisplay {
+            background-color: #ecf0f1;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #bdc3c7;
+            margin-top: 10px;
+            font-family: "Courier New", Courier, monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            min-height: 20px; /* Ensure it has some height even when empty */
+        }
+        #timeDisplay {
+            font-size: 1.5em;
+            color: #27ae60;
+            text-align: center;
+        }
+        .status-dot {
+            height: 12px;
+            width: 12px;
+            background-color: #bbb;
+            border-radius: 50%;
+            display: inline-block;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+        .status-dot.connected {
+            background-color: #2ecc71; /* Green for connected */
+        }
+        .status-dot.disconnected {
+            background-color: #e74c3c; /* Red for disconnected */
+        }
+        .status-dot.connecting {
+            background-color: #f39c12; /* Orange for connecting */
+        }
+        .footer {
+            margin-top: auto;
+            padding: 15px;
+            text-align: center;
+            font-size: 0.9em;
+            color: #7f8c8d;
+        }
+    </style>
+</head>
+<body>
+    <h1>Node.js API & WebSocket Tester</h1>
+
+    <div class="container">
+        <h2>HTTP API Test</h2>
+        <button id="fetchApiMessage">Fetch Message from API</button>
+        <p>API Response:</p>
+        <pre id="apiResponse">Click the button to get a message.</pre>
+    </div>
+
+    <div class="container">
+        <h2>WebSocket Test <span id="wsStatusDot" class="status-dot disconnected" title="Disconnected"></span></h2>
+        <p>Current time from server:</p>
+        <div id="timeDisplay">Waiting for WebSocket connection...</div>
+        <p id="wsStatus">Status: Disconnected</p>
+    </div>
+
+    <div class="footer">
+        <p>Refresh the page to restart connections if needed.</p>
+    </div>
+
+    <script>
+        // --- API Test Script ---
+        const fetchApiButton = document.getElementById('fetchApiMessage');
+        const apiResponseDisplay = document.getElementById('apiResponse');
+
+        fetchApiButton.addEventListener('click', async () => {
+            apiResponseDisplay.textContent = 'Fetching...';
+            try {
+                const response = await fetch('/api/message'); // Relative URL
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                apiResponseDisplay.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                console.error('Error fetching API message:', error);
+                apiResponseDisplay.textContent = `Error: ${error.message}`;
+            }
+        });
+
+        // --- WebSocket Test Script ---
+        const timeDisplay = document.getElementById('timeDisplay');
+        const wsStatusDisplay = document.getElementById('wsStatus');
+        const wsStatusDot = document.getElementById('wsStatusDot');
+
+        // Determine WebSocket protocol (ws or wss)
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}`; // Connect to the same host and port
+
+        let socket;
+
+        function connectWebSocket() {
+            wsStatusDisplay.textContent = 'Status: Connecting...';
+            wsStatusDot.className = 'status-dot connecting';
+            wsStatusDot.title = 'Connecting';
+
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = () => {
+                console.log('WebSocket connection established');
+                wsStatusDisplay.textContent = 'Status: Connected';
+                wsStatusDot.className = 'status-dot connected';
+                wsStatusDot.title = 'Connected';
+                timeDisplay.textContent = 'Connection open, waiting for time...';
+            };
+
+            socket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'timeUpdate' && data.time) {
+                        timeDisplay.textContent = data.time;
+                    } else {
+                        // Handle other message types or log unexpected format
+                        console.log('Received WebSocket message:', data);
+                        timeDisplay.textContent = `Received: ${event.data}`;
+                    }
+                } catch (e) {
+                    console.error('Error parsing WebSocket message or unexpected format:', e, event.data);
+                    timeDisplay.textContent = `Raw data: ${event.data}`;
+                }
+            };
+
+            socket.onclose = (event) => {
+                console.log('WebSocket connection closed:', event.reason, `Code: ${event.code}`);
+                wsStatusDisplay.textContent = `Status: Disconnected (Code: ${event.code})`;
+                wsStatusDot.className = 'status-dot disconnected';
+                wsStatusDot.title = 'Disconnected';
+                timeDisplay.textContent = 'Connection closed. Attempting to reconnect in 5s...';
+                // Optional: Implement reconnection logic
+                setTimeout(connectWebSocket, 5000); // Attempt to reconnect after 5 seconds
+            };
+
+            socket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                wsStatusDisplay.textContent = 'Status: Error';
+                wsStatusDot.className = 'status-dot disconnected'; // Show as disconnected on error
+                wsStatusDot.title = 'Error';
+                timeDisplay.textContent = 'Connection error. Check console.';
+                // socket.onclose will usually be called after an error.
+            };
+        }
+
+        // Initial connection attempt
+        connectWebSocket();
+
+    </script>
+</body>
+</html>
