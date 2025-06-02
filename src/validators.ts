@@ -1,6 +1,6 @@
 // src/validators.ts
 import { parse, Options as AcornOptions, Node as AcornNode } from 'acorn';
-import { simple as walkSimple, FoundNode } from 'acorn-walk';
+import { simple as walkSimple } from 'acorn-walk';
 
 interface Violation {
     message: string;
@@ -16,10 +16,7 @@ interface ValidationResult {
 const safeGlobalObjectsAndNamespaces: string[] = [
     'Object', 'Array', 'String', 'Number', 'Boolean', 'Date', 'RegExp',
     'Math', 'JSON', 'Symbol', 'Map', 'Set', 'WeakMap', 'WeakSet',
-    'Promise', 'Intl',
-    // Add any other truly safe global utility functions you might want to allow
-    // e.g., 'decodeURIComponent', 'encodeURIComponent'
-    // Be very careful with what you add here.
+    'Promise', 'Intl'
 ];
 
 // Keywords and patterns that are disallowed
@@ -36,26 +33,25 @@ const disallowedKeywords: { keyword: string, message: string }[] = [
     { keyword: 'document', message: "Usage of 'document' object is disallowed." },
     { keyword: 'global', message: "Usage of 'global' object is disallowed." }, // For Node.js global
     { keyword: 'globalThis', message: "Usage of 'globalThis' is disallowed." },
-    // Keywords related to asynchronous operations that might be abused for long-running tasks
-    // or creating hidden promises if not handled carefully by the overall system.
-    // This is a stricter approach.
-    // { keyword: 'async', message: "Usage of 'async' functions is disallowed." },
-    // { keyword: 'await', message: "Usage of 'await' is disallowed." },
-    // { keyword: 'setTimeout', message: "Usage of 'setTimeout' is disallowed." },
-    // { keyword: 'setInterval', message: "Usage of 'setInterval' is disallowed." },
+    { keyword: 'new', message: "Usage of 'new' to create objects is disallowed."},
+    // To prevent any kind of asynchronous task scheduling from the custom code
+    { keyword: 'async', message: "Usage of 'async' functions is disallowed." },
+    { keyword: 'await', message: "Usage of 'await' is disallowed." },
+    { keyword: 'setTimeout', message: "Usage of 'setTimeout' is disallowed." },
+    { keyword: 'setInterval', message: "Usage of 'setInterval' is disallowed." },
 ];
 
 function getLineNumberFromPosition(code: string, position: number): number {
     return code.substring(0, position).split('\n').length;
 }
 
-function isSafeCallee(node: AcornNode, allAvailableLocals: Set<string>): boolean {
+function isSafeCallee(node: AcornNode): boolean {
     const callee = (node as any).callee;
 
-    // 1. Direct identifier call (e.g., myFunction(), String())
+    // 1. Direct identifier call (e.g., String(), Object())
     if (callee.type === 'Identifier') {
-        // Allow if it's a known safe global or a variable passed in `allAvailableLocals`
-        return safeGlobalObjectsAndNamespaces.includes(callee.name) || allAvailableLocals.has(callee.name);
+        // Only allow if it's a known safe global constructor/function
+        return safeGlobalObjectsAndNamespaces.includes(callee.name);
     }
 
     // 2. Member expression call (e.g., "hello".toUpperCase(), Math.max(), myArray.push())
@@ -67,10 +63,10 @@ function isSafeCallee(node: AcornNode, allAvailableLocals: Set<string>): boolean
             objectNode = objectNode.object;
         }
 
-        // If the base is an Identifier (e.g., Math.max, JSON.parse, myVar.method)
+        // If the base is an Identifier (e.g., Math.max, JSON.parse)
         if (objectNode.type === 'Identifier') {
-            // Allow if the base identifier is a known safe global or a passed-in local
-            return safeGlobalObjectsAndNamespaces.includes(objectNode.name) || allAvailableLocals.has(objectNode.name);
+            // Only allow if the base identifier is a known safe global object
+            return safeGlobalObjectsAndNamespaces.includes(objectNode.name);
         }
 
         // If the base is a Literal (e.g., "string".toUpperCase(), [1,2].join())
@@ -96,33 +92,15 @@ export function validateTSCode(code: string, availableLocals: string[] = []): Va
     const lines = code.split('\n');
 
     // Check 1: Disallowed keywords
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
+    for (let line_number = 0; line_number < lines.length; line_number++) {
+        const line = lines[line_number];
         for (const forbidden of disallowedKeywords) {
             // Use regex to match whole words to avoid partial matches (e.g., 'processing' for 'process')
             const regex = new RegExp(`\\b${forbidden.keyword}\\b`);
             if (regex.test(line)) {
                 violations.push({
                     message: forbidden.message,
-                    location: `Line ${i + 1}`
-                });
-            }
-        }
-
-        // Check 2: Single equals sign (basic assignment check)
-        // This regex looks for a single '=' not preceded or followed by another common operator
-        // that might make it part of '==', '===', '>=', '<=', '!='. It also avoids '=>'.
-        // This is a heuristic and might have false positives/negatives.
-        // A proper AST check for AssignmentExpression would be more robust here.
-        const assignmentRegex = /(?<![=<>!])=(?![=>])/g;
-        let match;
-        while ((match = assignmentRegex.exec(line)) !== null) {
-            // Further check to avoid matching inside strings, very basic
-            const quotesBefore = (line.substring(0, match.index).match(/['"`]/g) || []).length;
-            if (quotesBefore % 2 === 0) { // If not inside a string literal (very simplistic check)
-                violations.push({
-                    message: "Potential variable assignment or arrow function declaration detected. Assignments and complex function declarations are disallowed.",
-                    location: `Line ${i + 1}`
+                    location: `Line ${line_number + 1}`
                 });
             }
         }
@@ -132,7 +110,7 @@ export function validateTSCode(code: string, availableLocals: string[] = []): Va
         return { isValid: false, violations };
     }
 
-    // Check 3: Function calls using AST
+    // Check 2: AST-based validation for assignments and function calls
     try {
         const acornOptions: AcornOptions = {
             ecmaVersion: 2022,
@@ -140,11 +118,11 @@ export function validateTSCode(code: string, availableLocals: string[] = []): Va
             locations: true,
         };
         const ast = parse(code, acornOptions);
-        const localsSet = new Set(availableLocals);
 
         walkSimple(ast, {
-            CallExpression(node: FoundNode<AcornNode>) { // node is AcornNode here
-                if (!isSafeCallee(node as AcornNode, localsSet)) {
+            CallExpression(node: AcornNode) { 
+                // Filtering function calls
+                if (!isSafeCallee(node as AcornNode)) {
                     const location = (node as any).loc ? `Line ${getLineNumberFromPosition(code, (node as any).start)}` : 'Unknown location';
                     // Attempt to describe the call
                     let calleeDescription = 'unknown function';
@@ -165,10 +143,8 @@ export function validateTSCode(code: string, availableLocals: string[] = []): Va
                     });
                 }
             },
-            // Optionally, add checks for other disallowed AST node types:
-            // ForStatement, WhileStatement, AssignmentExpression (more robust than regex)
-            // NewExpression (if you want to disallow `new SomeClass()`)
-            AssignmentExpression(node: FoundNode<AcornNode>) {
+            // Filtering assignment expressions
+            AssignmentExpression(node: AcornNode) {
                  violations.push({
                     message: "Direct assignment expressions are disallowed.",
                     location: (node as any).loc ? `Line ${getLineNumberFromPosition(code, (node as any).start)}` : 'Unknown location',
