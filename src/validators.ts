@@ -81,9 +81,15 @@ function isSafeCallee(node: AcornNode): boolean {
         ) {
             return true;
         }
-        // Potentially allow calls on results of other safe calls, this part is tricky
-        // For now, we are somewhat restrictive on chained calls if the base isn't clearly safe.
     }
+    
+    // Case 3: Allow immediate invocation of function expressions (IIFEs)
+    // This means the `callee` itself is a function definition being called.
+    if (callee.type === 'FunctionExpression' || callee.type === 'ArrowFunctionExpression') {
+        return true;
+    }
+    // Potentially allow calls on results of other safe calls, this part is tricky
+    // For now, we are somewhat restrictive on chained calls if the base isn't clearly safe.
     return false; // Disallow other types of callees (e.g., direct function expressions as callees)
 }
 

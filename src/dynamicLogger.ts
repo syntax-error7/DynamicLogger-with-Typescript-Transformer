@@ -92,6 +92,9 @@ class DynamicLogger {
         if (variables && Object.keys(variables).length > 0) {
             logString += ` - Variable Values: ${JSON.stringify(variables)}`;
         }
+        else{
+            logString += ` - Variable Values: {}`;
+        }
         // Add custom code output if present
         if (customCodeOutput !== undefined) { // Check for undefined to allow empty string or null as valid output
             logString += ` - Output of Custom Logging Code: [${customCodeOutput}]`;
@@ -200,7 +203,6 @@ class DynamicLogger {
             if (validationResult.isValid) {
                 try {
                     let declarations = '';
-                    const localVarsForEval: Record<string, any> = {};
 
                     if (allAvailableLocals) {
                         for (const key in allAvailableLocals) {
