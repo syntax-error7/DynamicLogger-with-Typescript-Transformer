@@ -1,13 +1,16 @@
 // dynamicLogger.ts
 import { AsyncLocalStorage } from 'async_hooks';
+import { validateTSCode } from './validators'; // Import the validator
+
 export const als = new AsyncLocalStorage<Map<string, any>>();
 // Imported to include global/request-scoped contextual data (managed by ALS)
 
 // --- Type Definitions ---
 interface LoggerConfig {
     VariablesToLog: string[];
-    SamplingRate: number;     // Probability (0.0 to 1.0)
-    PrefixMessage: string;    // Custom prefix for the message
+    SamplingRate: number;
+    PrefixMessage: string;
+    CustomLoggingCode?: string; // Optional: TS code string
 }
 
 type ConfigFetcher = (uniqueKey: string) => Promise<Partial<LoggerConfig> | null>; 
@@ -32,7 +35,8 @@ class DynamicLogger {
     private constructor(options: DynamicLoggerConstructorOptions) {
         this.configFetcher = options.configFetcher;
         this.logFunction = options.logFunction;
-        this.fetchTimeoutMs = options.fetchTimeoutMs || 2000; // Default 2s timeout
+        this.fetchTimeoutMs = options.fetchTimeoutMs || 2000; 
+        // Default 2s timeout, added just in case something breaks
         this.internalVerbose = !!options.verbose;
 
         if (this.internalVerbose) {
@@ -80,12 +84,17 @@ class DynamicLogger {
 
     private _formatLogString(
         uniqueKey: string,
-        finalMessage: string, // PrefixMessage + metadata
-        variables?: Record<string, any>
+        finalMessage: string,
+        variables?: Record<string, any>,
+        customCodeOutput?: string // New parameter
     ): string {
         let logString = `Unique Key: [${uniqueKey}] - Message: [${finalMessage}]`;
         if (variables && Object.keys(variables).length > 0) {
             logString += ` - Variable Values: ${JSON.stringify(variables)}`;
+        }
+        // Add custom code output if present
+        if (customCodeOutput !== undefined) { // Check for undefined to allow empty string or null as valid output
+            logString += ` - Output of Custom Logging Code: [${customCodeOutput}]`;
         }
         return logString;
     }
@@ -136,7 +145,8 @@ class DynamicLogger {
         const config: LoggerConfig = {
             VariablesToLog: fetchedConfig.VariablesToLog,
             SamplingRate: fetchedConfig.SamplingRate,
-            PrefixMessage: fetchedConfig.PrefixMessage || "", // Default PrefixMessage to empty string
+            PrefixMessage: fetchedConfig.PrefixMessage || "",
+            CustomLoggingCode: fetchedConfig.CustomLoggingCode // Keep it, could be undefined
         };
 
 
@@ -180,12 +190,59 @@ class DynamicLogger {
         const metadataString = (metadata === null || metadata === undefined) ? "" : String(metadata);
         const finalMessage = config.PrefixMessage + metadataString;
 
+        // --- CustomLoggingCode Execution ---
+        let customCodeOutputString: string | undefined = "NA"; // Default to NA
+
+        if (config.CustomLoggingCode && typeof config.CustomLoggingCode === 'string' && config.CustomLoggingCode.trim() !== "") {
+            // Pass available (filtered or all) locals to the validator so it knows what variables are "safe" to use
+            const validationResult = validateTSCode(config.CustomLoggingCode, Object.keys(contextLocals));
+
+            if (validationResult.isValid) {
+                try {
+                    // Create a function scope for eval to access filteredVars and other context if needed
+                    // The 'use strict;' is added here.
+                    // We pass `filteredVars` (or `contextLocals` if you want all available) and `als` to the eval context.
+                    // Be extremely careful what you expose to eval.
+                    const evalContext = {
+                        ...contextLocals, // Expose all available locals to the custom code
+                        // You could choose to expose only `filteredVars` for more restriction:
+                        // ...filteredVars,
+                        als: als, // Expose AsyncLocalStorage instance if needed by custom code
+                        // Add other safe utilities if necessary
+                        Math: Math,
+                        JSON: JSON,
+                        Date: Date,
+                        // Avoid exposing things like `process`, `require`, `fs`
+                    };
+
+                    // Dynamically create the function to control scope
+                    // The arguments to this new function are the keys from evalContext
+                    const argNames = Object.keys(evalContext);
+                    const argValues = Object.values(evalContext);
+
+                    const customFunction = new Function(...argNames, `"use strict";\nreturn (${config.CustomLoggingCode});`);
+                    const output = customFunction.apply(null, argValues); // `null` for `this` context
+                    customCodeOutputString = this._serializeValue(output);
+                } catch (evalError: any) {
+                    customCodeOutputString = `<EvalError: ${this._serializeValue(evalError.message)}>`;
+                    if (this.internalVerbose) {
+                        console.error(`DynamicLogger: Error executing CustomLoggingCode for key '${uniqueKey}':`, evalError);
+                    }
+                }
+            } else {
+                customCodeOutputString = `<ValidationViolations: ${JSON.stringify(validationResult.violations)}>`;
+                if (this.internalVerbose) {
+                    console.warn(`DynamicLogger: CustomLoggingCode validation failed for key '${uniqueKey}':`, validationResult.violations);
+                }
+            }
+        }
+        // --- End CustomLoggingCode Execution ---
+
         // --- Format and Log ---
-        const logString = this._formatLogString(uniqueKey, finalMessage, hasVars ? filteredVars : undefined);
+        const logString = this._formatLogString(uniqueKey, finalMessage, hasVars ? filteredVars : undefined, customCodeOutputString);
         try {
             this.logFunction(logString);
         } catch (e: any) {
-            // Prevent user's logFunction from crashing the logger
             console.error("DynamicLogger: Error executing user-provided logFunction:", e.message);
         }
     }
