@@ -199,13 +199,31 @@ class DynamicLogger {
 
             if (validationResult.isValid) {
                 try {
-                    // To make `allAvailableLocals` easily accessible within the eval'd string,
-                    // the `CustomLoggingCode` would need to be written like:
-                    // `(() => { return allAvailableLocals.someVar * 2; })()`
-                    // and `allAvailableLocals` would need to be in the scope of `eval`.
+                    let declarations = '';
+                    const localVarsForEval: Record<string, any> = {};
 
-                    const codeToEval = `"use strict";\n(${config.CustomLoggingCode});`;
-                    const output = eval(codeToEval); // `allAvailableLocals` is accessible here
+                    if (allAvailableLocals) {
+                        for (const key in allAvailableLocals) {
+                            declarations += `const ${key} = allAvailableLocals["${key}"];\n`;
+                        }
+                    }
+
+                    // The CustomLoggingCode is wrapped in an IIFE to make it an expression
+                    // and to provide a clean scope for the declarations.
+                    const codeToEval = `
+                        "use strict";
+                        (() => {
+                            ${declarations}
+                            return (${config.CustomLoggingCode});
+                        })()
+                    `;
+
+                    if (this.internalVerbose) {
+                        console.log(`[DynamicLogger] Code to eval for key '${uniqueKey}':\n${codeToEval}`);
+                    }
+
+                    // `eval` executes in the current scope. `allAvailableLocals` is in this scope.
+                    const output = eval(codeToEval);
                     customCodeOutputString = this._serializeValue(output);
                 } catch (evalError: any) {
                     customCodeOutputString = `<EvalError: ${this._serializeValue(evalError.message)}>`;
