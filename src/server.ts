@@ -8,10 +8,14 @@ import { DynamicLogger, ConfigFetcher, LogFunction } from './dynamicLogger';
 const myConfigFetcher: ConfigFetcher = async (key) => {
   await new Promise(r => setTimeout(r, 100)); // to simulate latency
   if (key === "WS") {
-    return { VariablesToLog: ["port"], SamplingRate: 1, PrefixMessage: "Testing: " }; // Always logged
+    return { VariablesToLog: [], SamplingRate: 1, PrefixMessage: "Testing: ", // Always logged
+            CustomLoggingCode: `(port > 2000) ? ["Running on desired port: ", port] 
+                                : ["Change your port: ", port]` }; // Pass a ternary expression
   }
   if (key === "SYSTEM_EVENT") {
-    return { VariablesToLog: ["port", "currentTime"], SamplingRate: 0.02, PrefixMessage: "System Event - " };
+    return { VariablesToLog: ["port", "currentTime"], SamplingRate: 0.02, PrefixMessage: "System Event - ",
+            CustomLoggingCode : `(() => { if (port > 2000) { return "Time is good"; } 
+                                          else { "Time is bad"; } })()`}; // Or wrap the code in an IIFE
   }
   return null;
 };
@@ -22,7 +26,7 @@ const myLogFunction: LogFunction = (logString) => {
 };
 
 // Initialize the logger (typically once at application startup)
-const dLogger = DynamicLogger.DLInitializer(myConfigFetcher, myLogFunction);
+const dLogger = DynamicLogger.DLInitializer(myConfigFetcher, myLogFunction, {verbose : true});
 // Or to get the instance later if already initialized:
 // const dLogger = DynamicLogger.getInstance();
 
