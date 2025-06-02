@@ -34,6 +34,7 @@ const disallowedKeywords: { keyword: string, message: string }[] = [
     { keyword: 'global', message: "Usage of 'global' object is disallowed." }, // For Node.js global
     { keyword: 'globalThis', message: "Usage of 'globalThis' is disallowed." },
     { keyword: 'new', message: "Usage of 'new' to create objects is disallowed."},
+    { keyword: 'fs', message: "Usage of 'fs' to access the file system is disallowed."},
     // To prevent any kind of asynchronous task scheduling from the custom code
     { keyword: 'async', message: "Usage of 'async' functions is disallowed." },
     { keyword: 'await', message: "Usage of 'await' is disallowed." },
@@ -87,7 +88,7 @@ function isSafeCallee(node: AcornNode): boolean {
 }
 
 
-export function validateTSCode(code: string, availableLocals: string[] = []): ValidationResult {
+export function validateTSCode(code: string): ValidationResult {
     const violations: Violation[] = [];
     const lines = code.split('\n');
 

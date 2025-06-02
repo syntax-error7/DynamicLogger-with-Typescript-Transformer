@@ -195,33 +195,17 @@ class DynamicLogger {
 
         if (config.CustomLoggingCode && typeof config.CustomLoggingCode === 'string' && config.CustomLoggingCode.trim() !== "") {
             // Pass available (filtered or all) locals to the validator so it knows what variables are "safe" to use
-            const validationResult = validateTSCode(config.CustomLoggingCode, Object.keys(contextLocals));
+            const validationResult = validateTSCode(config.CustomLoggingCode);
 
             if (validationResult.isValid) {
                 try {
-                    // Create a function scope for eval to access filteredVars and other context if needed
-                    // The 'use strict;' is added here.
-                    // We pass `filteredVars` (or `contextLocals` if you want all available) and `als` to the eval context.
-                    // Be extremely careful what you expose to eval.
-                    const evalContext = {
-                        ...contextLocals, // Expose all available locals to the custom code
-                        // You could choose to expose only `filteredVars` for more restriction:
-                        // ...filteredVars,
-                        als: als, // Expose AsyncLocalStorage instance if needed by custom code
-                        // Add other safe utilities if necessary
-                        Math: Math,
-                        JSON: JSON,
-                        Date: Date,
-                        // Avoid exposing things like `process`, `require`, `fs`
-                    };
+                    // To make `allAvailableLocals` easily accessible within the eval'd string,
+                    // the `CustomLoggingCode` would need to be written like:
+                    // `(() => { return allAvailableLocals.someVar * 2; })()`
+                    // and `allAvailableLocals` would need to be in the scope of `eval`.
 
-                    // Dynamically create the function to control scope
-                    // The arguments to this new function are the keys from evalContext
-                    const argNames = Object.keys(evalContext);
-                    const argValues = Object.values(evalContext);
-
-                    const customFunction = new Function(...argNames, `"use strict";\nreturn (${config.CustomLoggingCode});`);
-                    const output = customFunction.apply(null, argValues); // `null` for `this` context
+                    const codeToEval = `"use strict";\n(${config.CustomLoggingCode});`;
+                    const output = eval(codeToEval); // `allAvailableLocals` is accessible here
                     customCodeOutputString = this._serializeValue(output);
                 } catch (evalError: any) {
                     customCodeOutputString = `<EvalError: ${this._serializeValue(evalError.message)}>`;
