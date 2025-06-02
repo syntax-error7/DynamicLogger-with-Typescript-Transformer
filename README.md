@@ -2,35 +2,41 @@
 
 `dynamic-logger` automatically injects in-scope local variables into your log calls at compile time.  At runtime, it fetches dynamic configurations (including sampling rates and variables to log) for each unique log point and uses a flexible, user-provided logging function.
 
-## WARNING
+## ⚠️ WARNING ⚠️
 
-This module won't work if you are using a typescript bundler (such as vite, webpack, tsup, esbuild, etc.). The local variables injected by the custom typescript transformer are being removed by the bundler as a part of code cleanup or tree shaking.
+`dynamic-logger` relies on a TypeScript custom transformer to inject local variables at **compile time** (when `tsc` runs). Most modern JavaScript bundlers (like Webpack, esbuild, tsup, Vite) perform their own optimizations, including tree-shaking and dead code elimination, *after* `tsc` compilation.
+
+**These bundler optimizations will likely remove the local variables injected by the `dynamic-logger` transformer. Therefore, `dynamic-logger` in its current form is best suited for projects where `tsc` is the final step in producing executable JavaScript for a Node.js environment.**
 
 ## Motivation
 
 Manually adding variable names into log statements requires code to be re-deployed, which is undesirable. 
 
-Enter DynamicLogger, which accesses the logging code from a database and saves us from the hassle of re-deploying.
-
-## What does the repo contain?
-
-It contains a prototype of the module we envision creating. 
+Enter DynamicLogger, which accesses the logging configurations (including custom code snippets) from an external source (e.g., a database) at runtime and saves us from the hassle of re-deploying.
 
 ## How It Works
 
 1.  **Initialization (`DLInitializer`):**
-    *   You initialize `dynamic-logger` once with your custom `configFetcher` and `logFunction`.
+    *   You initialize `dynamic-logger` once with your custom `configFetcher`(to get configurations) and `logFunction` (to output logs).
 
 2.  **TypeScript Custom Transformer (`auto-log-vars-transformer.ts`):**
     *   During compilation, when this transformer sees `dLogger.dynamicLog("MY_KEY", "Some message");`, it finds local variables (e.g., `user`, `id`) declared before the call.
     *   It modifies the call to: `dLogger.dynamicLog("MY_KEY", "Some message", { user, id });` (The third argument contains all in-scope locals).
 
 3.  **Runtime (`dLogger.dynamicLog` call):**
-    *   `dynamic-logger` calls your `configFetcher("MY_KEY")` to get `LoggerConfig` (containing `VariablesToLog`, `SamplingRate`, `PrefixMessage`).
+    *   `dynamic-logger` calls your `configFetcher("MY_KEY")` to get `LoggerConfig`.
+    *   `LoggerConfig` contains:
+        *   `VariablesToLog: string[]`
+        *   `SamplingRate: number` (0.0 to 1.0 probability)
+        *   `PrefixMessage: string`
+        *   `CustomLoggingCode?: string` (Optional TypeScript/JavaScript code string)
     *   It checks the `SamplingRate`. If `Math.random() < SamplingRate`, it proceeds.
-    *   It filters the injected `{ user, id }` object based on `VariablesToLog` from the fetched config.
-    *   It constructs a message: "PrefixMessage" + your "Some message".
-    *   It formats the final log string: `Unique Key: [MY_KEY] - Message: [Constructed Message] - Variable Values: [{ filtered_user, filtered_id }]`.
+    *   It filters the injected `{ user, id, ... }` object based on `VariablesToLog`.
+    *   If `CustomLoggingCode` is present and valid:
+        *   It's executed via `eval` with the injected local variables available in its scope.
+        *   Its output (or any error/validation messages) is captured.
+    *   It constructs a message: `PrefixMessage` + your "Some message" (the `metadata` argument).
+    *   It formats the final log string: `Unique Key: [MY_KEY] - Message: [Constructed Message] - Variable Values: [{ filtered_vars }] - Output of Custom Logging Code: [OUTPUT]`.
     *   It passes this string to your `logFunction`.
 
 ---
@@ -124,24 +130,28 @@ Create a file (e.g., src/utils/logger.ts or src/logger.ts) to initialize and exp
 import {
     DynamicLogger,
     type ConfigFetcher,
-    type LogFunction
+    type LogFunction,
+    type LoggerConfig
 } from 'dynamic-logger'; 
 
 // 1. Define your Configuration Fetcher (Here defined using if-else statements. In a real app, fetch from a database, API, Redis, etc.)
 const myConfigFetcher: ConfigFetcher = async (uniqueKey: string): Promise<Partial<LoggerConfig> | null> => {
     if (uniqueKey === "USER_LOGIN_SUCCESS") {
         return {
-            VariablesToLog: ["userId", "ipAddress", "sessionDuration"],
+            VariablesToLog: ["userId", "ipAddress", "sessionDuration"], // Which injected locals to log
             SamplingRate: 0.75, // Log 75% of the time
-            PrefixMessage: "Login Event: "
-        };
+            PrefixMessage: "Login Event: ", // Prepended to your log metadata
+            CustomLoggingCode: `(() => ({ loginType: (userId.includes('@') ? 'email' : 'username'), firstChar: userId[0] }))()`,
+            // Custom code to generate additional log data
+        }; // Wrapping code in an IIFE
     }
-    if (uniqueKey === "ORDER_PROCESSING_ERROR") {
+    if (uniqueKey === "USER_LOGIN_FAILURE") {
         return {
-            VariablesToLog: ["orderId", "errorMessage", "paymentId", "customerDetails"],
-            SamplingRate: 1.0, // Always log errors
-            PrefixMessage: "CRITICAL ERROR - Order Processing: "
-        };
+            VariablesToLog: ["orderId"],
+            SamplingRate: 1.0, // Always log this event
+            PrefixMessage: "CRITICAL ERROR - Order Processing: ",
+            CustomLoggingCode: `(attemptCount > 2) ? ["Attempt count:", attemptCount] : ["Too less attempts, try more"]` 
+        }; // Using ternary operator for simple conditional statements
     }
     // For keys not explicitly defined:
     return { SamplingRate: 0, VariablesToLog: [], PrefixMessage: "" };
@@ -161,42 +171,44 @@ export const dLogger = DynamicLogger.DLInitializer(
 );
 ```
 
-### 5. Use the Logger in Your Code
+**Remember:**
 
-  Import your initialized dLogger instance and use its dynamicLog method.
-
-   ```typescript
-  // src/services/authService.ts (in your project)
-  import { dLogger } from '../utils/logger'; // Adjust path to your logger setup
-
-  export async function handleLogin(userId: string, ipAddress: string): Promise<boolean> {
-      const sessionDuration = 3600; // Example local variable
-      let loginSuccessful = false;
-
-      // Some logic...
-      loginSuccessful = true; // Simulate successful login
-
-      if (loginSuccessful) {
-          await dLogger.dynamicLog(
-              "USER_LOGIN_SUCCESS",
-              `User ${userId} logged in from ${ipAddress}. Session: ${sessionDuration}s.`
-          );
-          return true;
-      } else {
-          const attemptCount = 3; // Another local variable
-          await dLogger.dynamicLog(
-              "USER_LOGIN_FAILURE", // Different key, different config
-              `User ${userId} failed to log in. Attempt: ${attemptCount}.`
-          );
-          return false;
-      }
-  }
-  ```
-
-Remember:
-
-- The second argument to dLogger.dynamicLog is your main message context (metadata).
+- The second argument to `dLogger.dynamicLog` is your main message context (metadata).
 - The third argument (local variables) is **automatically injected by the transformer**. You do not type it out.
+
+**Important Notes on `CustomLoggingCode`:**
+
+*   **Execution:** The `CustomLoggingCode` is wrapped and executed like this internally:
+    ```typescript
+    const output = eval(`return(${CustomLoggingCode})`)
+    ```
+    The `output` of this execution will appear in your final log string as:
+    `... - Output of Custom Logging Code: [OUTPUT]`
+    (If `CustomLoggingCode` is not provided or is invalid, `OUTPUT` will be "NA" or an error/validation message).
+
+*   **Requirement: Must Evaluate to a Value:** Your `CustomLoggingCode` string **must be a valid TypeScript expression or an Immediately Invoked Function Expression (IIFE) that returns a value.**
+    *   **Simple Expressions / Ternary Operator:** For straightforward logic or conditional values.
+        ```typescript
+        CustomLoggingCode: `(attemptCount > 2) ? "High attempts: " + attemptCount : "Low attempts"`
+        ```
+    *   **IIFE for Complex Logic:** For multi-step calculations or more involved conditional logic, wrap your code in an IIFE that explicitly returns a value.
+        ```javascript
+        // Example:
+        CustomLoggingCode: `(() => {
+            const userType = userId.includes('@') ? 'emailUser' : 'usernameUser';
+            if (sessionDuration > 3600) {
+                return { type: userType, session: 'long'};
+            }
+            return { type: userType, session: 'standard'};
+        })()`
+        ```
+
+*   **Available Variables:** Inside `CustomLoggingCode`, you have direct access to:
+    *   The local variables injected by the `dynamic-logger` transformer (e.g., `userId`, `ipAddress`, `sessionDuration` in the example above).
+    *   Standard safe JavaScript global objects (e.g., `Math`, `JSON`, `Date`, `String`, `Array`, `Object`).
+
+*   **Security & Validation:** `dynamic-logger` includes a validator to prevent potentially harmful code (like direct assignments, loops, or access to `process`, `fs`, etc.) from being executed. Ensure your `CustomLoggingCode` adheres to these restrictions. See the "`CustomLoggingCode` Security" section for more details.
+
 
 ### 6. Build and Run Your Project
 
@@ -214,7 +226,18 @@ Remember:
    Your `myLogFunction` will now receive formatted log strings based on the fetched configurations and sampling rates!
 
 ---
-## Example Usage
+
+## `CustomLoggingCode` Security
+The `CustomLoggingCode` string is executed via `eval`. `dynamic-logger` includes a validator (`validators.ts`) that attempts to restrict potentially harmful code patterns (like direct assignments, loops, access to `process` or `fs`).
+
+- **Allowed**: Expressions, calls to safe global objects (`Math`, `JSON`, `String`, etc.), methods on literals (e.g., `"text".toUpperCase()`), and IIFEs (Immediately Invoked Function Expressions) whose bodies also adhere to these rules. Injected local variables are available within the scope of the `CustomLoggingCode`.
+- **Disallowed**: `process`, `require`, `eval`, `new Function()`, direct assignments (`x = 5`), loops (`for`, `while`), etc.
+
+**Despite validation, using eval with externally sourced code carries inherent risks. Ensure the source of your CustomLoggingCode is trusted.** The validator is a safeguard, not an absolute guarantee against all malicious intent.
+
+---
+
+## Example Usage (present in this repository)
 
 This section demonstrates how to run the example usage file in the repository, which is a Real-Time Clock application, utilizing Node.js, Express, and WebSockets.
 
@@ -254,12 +277,13 @@ npm run start:example
     *   Ensure your build script uses `tsc` (not `npx tsc`).
     *   Double-check the `"transform"` path in your `tsconfig.json`'s `plugins` section. It must be exact.
 *   **Variables logged are not what you expect:**
-    *   Check the `VariablesToLog` array in your project's uniqueKey to LoggerConfig map.
+    *   Check VariablesToLog in the config returned by your configFetcher for the specific uniqueKey.
+    *   Ensure CustomLoggingCode is a valid JavaScript expression or an IIFE that returns a value and passes the security validation.
     *   The transformer only injects variables declared *before* the `dLogger.dynamicLog()` call in the same or an enclosing scope.
 
 ---
 
 ## Further work
 
-*   Adding security checks.
-*   Adding custom logging functionality. 
+*   Allowing more fine-grained control over which injected local variables are exposed to CustomLoggingCode.
+* Enhanced validation rules.

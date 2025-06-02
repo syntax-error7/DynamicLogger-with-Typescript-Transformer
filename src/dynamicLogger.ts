@@ -6,7 +6,7 @@ export const als = new AsyncLocalStorage<Map<string, any>>();
 // Imported to include global/request-scoped contextual data (managed by ALS)
 
 // --- Type Definitions ---
-interface LoggerConfig {
+export interface LoggerConfig {
     VariablesToLog: string[];
     SamplingRate: number;
     PrefixMessage: string;
