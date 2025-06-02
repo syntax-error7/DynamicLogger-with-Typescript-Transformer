@@ -2,7 +2,7 @@
 
 `dynamic-logger` automatically injects in-scope local variables into your log calls at compile time.  At runtime, it fetches dynamic configurations (including sampling rates and variables to log) for each unique log point and uses a flexible, user-provided logging function.
 
-## ⚠️ WARNING ⚠️
+## ⚠️ Important Compatibility Note: Bundlers (Webpack, esbuild, tsup, Vite, etc.) ⚠️
 
 `dynamic-logger` relies on a TypeScript custom transformer to inject local variables at **compile time** (when `tsc` runs). Most modern JavaScript bundlers (like Webpack, esbuild, tsup, Vite) perform their own optimizations, including tree-shaking and dead code elimination, *after* `tsc` compilation.
 
@@ -26,12 +26,12 @@ Enter DynamicLogger, which accesses the logging configurations (including custom
 3.  **Runtime (`dLogger.dynamicLog` call):**
     *   `dynamic-logger` calls your `configFetcher("MY_KEY")` to get `LoggerConfig`.
     *   `LoggerConfig` contains:
-        *   `VariablesToLog: string[]`
+        *   `VariablesToLog: string[]` (variables whose values are to be logged)
         *   `SamplingRate: number` (0.0 to 1.0 probability)
-        *   `PrefixMessage: string`
+        *   `PrefixMessage: string` (Prefix message to be added to log string)
         *   `CustomLoggingCode?: string` (Optional TypeScript/JavaScript code string)
     *   It checks the `SamplingRate`. If `Math.random() < SamplingRate`, it proceeds.
-    *   It filters the injected `{ user, id, ... }` object based on `VariablesToLog`.
+    *   It filters the injected variables `{ user, id, ... }` based on `VariablesToLog`.
     *   If `CustomLoggingCode` is present and valid:
         *   It's executed via `eval` with the injected local variables available in its scope.
         *   Its output (or any error/validation messages) is captured.
@@ -192,8 +192,7 @@ export const dLogger = DynamicLogger.DLInitializer(
         CustomLoggingCode: `(attemptCount > 2) ? "High attempts: " + attemptCount : "Low attempts"`
         ```
     *   **IIFE for Complex Logic:** For multi-step calculations or more involved conditional logic, wrap your code in an IIFE that explicitly returns a value.
-        ```javascript
-        // Example:
+        ```typescript
         CustomLoggingCode: `(() => {
             const userType = userId.includes('@') ? 'emailUser' : 'usernameUser';
             if (sessionDuration > 3600) {
